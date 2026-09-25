@@ -3,6 +3,17 @@
 Das Format folgt [Keep a Changelog](https://keepachangelog.com/de/1.1.0/),
 die Versionsnummern der [semantischen Versionierung](https://semver.org/lang/de/).
 
+## [Unveröffentlicht]
+
+### Geändert
+
+- Die Suche nach Python-Installationen startet jede Installation nur noch
+  einmal und liest dabei gleich ihre Module ein. Welche Installation ein
+  Doppelklick startet, steht in der Liste von `py -0p`, die ohnehin gelesen
+  wird. Auf einem Rechner mit zwei Installationen sinkt die Zahl der
+  gestarteten Prozesse von neun auf drei. Das spürt man vor allem beim ersten
+  Start der EXE, wenn ein Virenschutz jeden dieser Aufrufe prüft.
+
 ## [2.0.0] – 2026-09-25
 
 Erste veröffentlichte Fassung. Sie ersetzt eine unveröffentlichte

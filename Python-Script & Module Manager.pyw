@@ -460,22 +460,47 @@ def _registry_kandidaten():
     return gefunden
 
 
-def _launcher_kandidaten():
-    """Was der Python-Launcher py.exe mit -0p auflistet."""
-    gefunden = []
+def launcher_liste_lesen(ausgabe: str):
+    """Ausgabe von ``py -0p`` zerlegen; liefert (Pfade, Voreinstellung oder None).
+
+    Die Voreinstellung - der Interpreter, den ``py`` ohne Angabe startet -
+    traegt vor dem Pfad ein Sternchen, etwa ``-V:3.14 *   C:\\...\\python.exe``.
+    """
+    pfade, standard = [], None
+    for zeile in ausgabe.splitlines():
+        zeile = zeile.strip()
+        treffer = re.search(r"([A-Za-z]:\\.*?pythonw?\.exe)\s*$", zeile, re.I)
+        if treffer:
+            pfade.append(treffer.group(1))
+            if "*" in zeile[:treffer.start()]:
+                standard = treffer.group(1)
+    return pfade, standard
+
+
+def _launcher_kandidaten(weitere_launcher=()):
+    """Was der Python-Launcher py.exe mit -0p auflistet.
+
+    Liefert (Pfade, {Launcher-Schluessel: Voreinstellung}). ``-0p`` startet
+    keinen Interpreter; die Voreinstellung faellt dabei kostenlos mit ab.
+    """
+    gefunden, standard, gesehen = [], {}, set()
     windows = os.environ.get("WINDIR", r"C:\Windows")
-    for launcher in (os.path.join(windows, "py.exe"), shutil.which("py")):
+    for launcher in (os.path.join(windows, "py.exe"), shutil.which("py"), *weitere_launcher):
         if not launcher or not os.path.isfile(launcher) or ist_store_platzhalter(launcher):
             continue
+        schluessel = normschluessel(launcher)
+        if schluessel in gesehen:
+            continue
+        gesehen.add(schluessel)
         try:
             _code, aus, _fehler = verdeckt_ausfuehren([launcher, "-0p"], timeout=20)
         except (OSError, subprocess.SubprocessError):
             continue
-        for zeile in aus.splitlines():
-            treffer = re.search(r"([A-Za-z]:\\.*?pythonw?\.exe)\s*$", zeile.strip(), re.I)
-            if treffer:
-                gefunden.append(treffer.group(1))
-    return gefunden
+        pfade, voreinstellung = launcher_liste_lesen(aus)
+        gefunden += pfade
+        if voreinstellung:
+            standard[schluessel] = voreinstellung
+    return gefunden, standard
 
 
 def _ordner_kandidaten():
@@ -509,8 +534,8 @@ def doppelklick_python():
     """Interpreter, den ein Doppelklick auf eine .pyw- bzw. .py-Datei startet.
 
     Massgeblich ist die Dateizuordnung. Zeigt sie auf den Launcher
-    (py.exe/pyw.exe), entscheidet dessen Voreinstellung - die erfragt man
-    am zuverlaessigsten beim Launcher selbst.
+    (py.exe/pyw.exe), kommt dessen py.exe zurueck - welche Installation er
+    startet, verraet seine Liste ``py -0p`` (siehe installationen_finden).
     """
     if sys.platform != "win32":
         return None
@@ -556,60 +581,98 @@ MARKEN = {
 }
 
 
-def installationen_finden(zusaetzliche=()):
+def installationen_finden(zusaetzliche=(), module=None, fortschritt=None):
     """Alle erreichbaren Python-Installationen - jede genau einmal.
 
     Liefert eine Liste von Eintraegen mit Pfad, Version, Bitbreite,
     Ordnername und Marken: welche Installation ``python`` auf der
     Kommandozeile ist, welche ein Doppelklick startet und welche dieses
     Programm gerade ausfuehrt.
+
+    Jeder Aufruf eines Interpreters kostet Zeit - und ein Virenschutz prueft
+    jeden einzelnen, beim ersten Start einer unbekannten EXE besonders
+    gruendlich. Deshalb wird jeder Kandidat hoechstens einmal gestartet, und
+    die Marken ergeben sich aus dem, was dabei ohnehin herauskommt:
+
+    - Ist ``module`` ein dict, liest schon dieser eine Aufruf die Module ein
+      (MODUL_PROBE meldet Pfad, Version und Bitbreite mit) und legt die Daten
+      unter dem Schluessel der Installation darin ab.
+    - Die Voreinstellung des Doppelklick-Launchers steht in ``py -0p``, das
+      fuer die Kandidatenliste sowieso laeuft.
+
+    fortschritt(pfad) wird vor jedem Aufruf gerufen, etwa fuer eine Anzeige.
     """
+    doppelklick = doppelklick_python()
+    launcher = [doppelklick] if doppelklick and os.path.basename(
+        doppelklick).lower() == "py.exe" else []
+    launcher_pfade, voreinstellungen = _launcher_kandidaten(launcher)
+
     kandidaten = []
     if not ist_eingefroren():
         kandidaten.append(konsolen_python(sys.executable))
-    kandidaten += _registry_kandidaten() + _launcher_kandidaten() + _ordner_kandidaten()
+    kandidaten += _registry_kandidaten() + launcher_pfade + _ordner_kandidaten()
     kandidaten += list(zusaetzliche)
     pfad = pfad_python()
     if pfad:
         kandidaten.append(pfad)
 
-    gesehen = set()
+    aufgeloest = {}                  # Schluessel eines Kandidaten -> Schluessel der Installation
     installationen = {}
-    for kandidat in kandidaten:
+
+    def aufloesen(kandidat):
+        """Kandidat einmal starten; liefert den Schluessel seiner Installation."""
         kandidat = konsolen_python(os.path.abspath(kandidat))
-        if not os.path.isfile(kandidat) or ist_store_platzhalter(kandidat):
-            continue
         schluessel = normschluessel(kandidat)
-        if schluessel in gesehen:
-            continue
-        gesehen.add(schluessel)
-        antwort = interpreter_abfragen(kandidat)
+        if schluessel in aufgeloest:
+            return aufgeloest[schluessel]
+        aufgeloest[schluessel] = None
+        if not os.path.isfile(kandidat) or ist_store_platzhalter(kandidat):
+            return None
+        if fortschritt:
+            fortschritt(kandidat)
+        daten = None
+        if module is not None:
+            daten = module_einlesen(kandidat)
+            antwort = None if "fehler" in daten else (
+                konsolen_python(daten["exe"]), daten["version"], daten["bits"])
+            if antwort is None:
+                # Die Probe kann an einer kaputten Paketinstallation scheitern,
+                # obwohl der Interpreter laeuft - dann steht er trotzdem in der
+                # Liste, mit der Fehlermeldung in seinem Reiter.
+                antwort = interpreter_abfragen(kandidat)
+        else:
+            antwort = interpreter_abfragen(kandidat)
         if not antwort:
-            continue
+            return None
         exe, version, bits = antwort
         echt = normschluessel(exe)
-        gesehen.add(echt)
-        if echt in installationen:
-            continue
-        ordner = os.path.dirname(exe)
-        if os.path.basename(ordner).lower() in ("scripts", "bin"):     # virtuelle Umgebung
-            ordner = os.path.dirname(ordner)
-        installationen[echt] = {"key": echt, "exe": exe, "version": version, "bits": bits,
-                                "ordner": os.path.basename(ordner) or ordner, "marken": []}
+        aufgeloest[schluessel] = aufgeloest[echt] = echt
+        if echt not in installationen:
+            ordner = os.path.dirname(exe)
+            if os.path.basename(ordner).lower() in ("scripts", "bin"):     # virtuelle Umgebung
+                ordner = os.path.dirname(ordner)
+            installationen[echt] = {"key": echt, "exe": exe, "version": version, "bits": bits,
+                                    "ordner": os.path.basename(ordner) or ordner, "marken": []}
+            if module is not None:
+                module[echt] = daten
+        return echt
+
+    for kandidat in kandidaten:
+        aufloesen(kandidat)
 
     def markieren(exe, marke):
-        if not exe:
-            return
-        antwort = interpreter_abfragen(exe)
-        if antwort and normschluessel(antwort[0]) in installationen:
-            installationen[normschluessel(antwort[0])]["marken"].append(marke)
+        echt = aufloesen(exe) if exe else None       # meist schon bekannt: kein Aufruf
+        if echt in installationen and marke not in installationen[echt]["marken"]:
+            installationen[echt]["marken"].append(marke)
 
     markieren(pfad, "path")
-    markieren(doppelklick_python(), "doppelklick")
+    if launcher:
+        # Nur wenn -0p keine Voreinstellung nennt, muss der Launcher selbst ran.
+        markieren(voreinstellungen.get(normschluessel(doppelklick), doppelklick), "doppelklick")
+    else:
+        markieren(doppelklick, "doppelklick")
     if not ist_eingefroren():
-        eigen = normschluessel(konsolen_python(sys.executable))
-        if eigen in installationen:
-            installationen[eigen]["marken"].append("selbst")
+        markieren(konsolen_python(sys.executable), "selbst")
 
     def sortierung(inst):
         teile = tuple(int(t) if t.isdigit() else 0 for t in inst["version"].split("."))
@@ -2694,13 +2757,18 @@ class ManagerApp:
 
         def arbeit():
             try:
-                gefunden = installationen_finden(weitere)
+                # Suchen und Einlesen in einem Aufruf je Installation
+                module = {}
+                gefunden = installationen_finden(
+                    weitere, module=module,
+                    fortschritt=lambda pfad: self.im_hauptthread(
+                        self.status, _("Lese Module ein: {python} …").format(python=pfad), True))
                 self.im_hauptthread(self._installationen_uebernehmen, gefunden)
                 for inst in gefunden:
-                    self.im_hauptthread(self.status, _("Lese Module ein: {python} …").format(
-                        python=installation_titel(inst)), True)
-                    self.im_hauptthread(self._daten_uebernehmen, inst["key"],
-                                        module_einlesen(inst["exe"]))
+                    daten = module.get(inst["key"])
+                    if not daten or "fehler" in daten:       # zweiter Versuch, gezielt
+                        daten = module_einlesen(inst["exe"])
+                    self.im_hauptthread(self._daten_uebernehmen, inst["key"], daten)
             except Exception as fehler:          # noqa: BLE001 - jede Panne melden
                 self.im_hauptthread(self.meldung, _("Fehler beim Einlesen: {fehler}").format(
                     fehler=fehler), True)

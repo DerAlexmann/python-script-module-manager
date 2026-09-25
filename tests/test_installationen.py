@@ -38,3 +38,41 @@ def test_die_eigene_installation_wird_gefunden(pm):
 def test_kaputter_interpreter_liefert_einen_fehler(pm, tmp_path):
     daten = pm.module_einlesen(str(tmp_path / "gibt-es-nicht.exe"))
     assert "fehler" in daten
+
+
+def test_launcher_liste_mit_voreinstellung(pm):
+    ausgabe = "\n".join([r" -V:3.14 *        C:\Python314\python.exe",
+                         r" -V:3.12          C:\Python312\python.exe",
+                         r" -3.10-64         C:\Alt\Python310\pythonw.exe"])
+    pfade, standard = pm.launcher_liste_lesen(ausgabe)
+    assert pfade == [r"C:\Python314\python.exe", r"C:\Python312\python.exe",
+                     r"C:\Alt\Python310\pythonw.exe"]
+    assert standard == r"C:\Python314\python.exe"
+
+
+def test_launcher_liste_ohne_voreinstellung(pm):
+    assert pm.launcher_liste_lesen(r" -V:3.12   C:\Python312\python.exe")[1] is None
+
+
+def test_jede_installation_wird_nur_einmal_gestartet(pm, monkeypatch):
+    """Suchen und Einlesen kosten zusammen genau einen Aufruf je Installation.
+
+    Jeder Aufruf eines Interpreters wird von einem Virenschutz geprueft; beim
+    ersten Start einer unbekannten EXE kann das die Suche stark bremsen.
+    """
+    aufrufe = []
+    echt = pm.verdeckt_ausfuehren
+
+    def zaehlen(befehl, *args, **kwargs):
+        aufrufe.append(befehl)
+        return echt(befehl, *args, **kwargs)
+
+    monkeypatch.setattr(pm, "verdeckt_ausfuehren", zaehlen)
+    module = {}
+    gefunden = pm.installationen_finden(module=module)
+    assert gefunden
+    interpreter = [b for b in aufrufe if b[1:2] == ["-c"]]
+    assert all(b[2] == pm.MODUL_PROBE for b in interpreter), "keine zusaetzliche Schnellabfrage"
+    assert len(interpreter) <= len(gefunden) + 1, "hoechstens ein Umweg ueber eine Weiterleitung"
+    for inst in gefunden:
+        assert "dists" in module[inst["key"]]
