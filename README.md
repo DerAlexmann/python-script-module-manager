@@ -106,7 +106,9 @@ eine muss also auf dem Rechner sein.
 > ausführen". Auch ein Virenschutz hält eine frisch heruntergeladene,
 > unbekannte Datei gern für ein paar Sekunden fest, während er sie prüft; ein
 > Startversuch in dieser Zeit kann mit „Zugriff verweigert" abbrechen.
-> Einfach kurz warten und erneut starten. Wer sichergehen will, vergleicht
+> Einfach kurz warten und erneut starten. Weil das Programm beim ersten Start
+> mehrfach `python.exe` aufruft, um die Installationen zu finden, kann die
+> Suche dabei auch deutlich länger dauern als später. Wer sichergehen will, vergleicht
 > vorher die SHA-256-Prüfsumme aus den Release-Notizen.
 
 **Als Skript:** `Python-Script & Module Manager.pyw` doppelklicken. Nötig ist

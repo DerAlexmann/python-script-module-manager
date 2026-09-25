@@ -101,7 +101,9 @@ the program finds, so at least one has to be on the computer.
 > asks once – "More info" → "Run anyway". Antivirus software also tends to
 > hold on to a freshly downloaded, unknown file for a few seconds while it
 > scans it; starting the program during that time may fail with "Access
-> denied". Wait a moment and start it again. To be on the safe side, compare
+> denied". Wait a moment and start it again. Because the program calls
+> `python.exe` several times on first start to find the installations, that
+> search may also take noticeably longer than later on. To be on the safe side, compare
 > the SHA-256 checksum from the release notes first.
 
 **As a script:** double-click `Python-Script & Module Manager.pyw`. All it
