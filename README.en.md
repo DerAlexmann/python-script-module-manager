@@ -92,7 +92,7 @@ script. The rules:
 
 ## Running it
 
-**As a program:** download `Python-Script & Module Manager.exe` from the
+**As a program:** download `Python-Script-Module-Manager.exe` from the
 [releases](../../releases) and start it. Nothing is installed; the settings
 file appears next to it. Scripts and pip run through the Python installations
 the program finds, so at least one has to be on the computer.

@@ -56,7 +56,7 @@ Die EXE ist nicht signiert. Prüfe nach dem Herunterladen die SHA-256-Summe
 gegen die Angabe in den Release-Notizen:
 
 ```powershell
-Get-FileHash ".\Python-Script & Module Manager.exe" -Algorithm SHA256
+Get-FileHash .\Python-Script-Module-Manager.exe -Algorithm SHA256
 ```
 
 Wer lieber nichts Fertiges ausführt: Das Programm ist eine einzige lesbare

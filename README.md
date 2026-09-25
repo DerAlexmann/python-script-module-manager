@@ -95,7 +95,7 @@ auszuführen. Dabei gilt:
 
 ## Starten
 
-**Als Programm:** `Python-Script & Module Manager.exe` aus den
+**Als Programm:** `Python-Script-Module-Manager.exe` aus den
 [Releases](../../releases) herunterladen und starten. Es wird nichts
 installiert; die Einstellungsdatei entsteht daneben. Die Scripts und pip
 laufen über die Python-Installationen, die das Programm findet. Mindestens

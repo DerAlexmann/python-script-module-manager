@@ -18,6 +18,10 @@ permissions:
 
 env:
   NAME: "Python-Script & Module Manager"
+  # GitHub erlaubt in Asset-Namen weder Leerzeichen noch "&" und macht sonst
+  # "Python-Script.Module.Manager.exe" daraus. Die EXE bekommt deshalb fuer
+  # den Download einen eigenen, sauberen Namen.
+  ASSET: "Python-Script-Module-Manager.exe"
 
 jobs:
   quellpaket:
@@ -59,11 +63,14 @@ jobs:
           --icon "script_module_manager.ico"
           "${{ env.NAME }}.pyw"
 
+      - name: Download-Namen vergeben
+        run: Move-Item "dist\$env:NAME.exe" "dist\$env:ASSET"
+
       - name: Startet die EXE ueberhaupt?
         # Ein reiner Rauchtest: die EXE wird gestartet und nach einer Weile
         # beendet. Faellt sie sofort um, schlaegt der Job fehl.
         run: |
-          $p = Start-Process -FilePath "dist\$env:NAME.exe" -PassThru
+          $p = Start-Process -FilePath "dist\$env:ASSET" -PassThru
           Start-Sleep -Seconds 25
           if ($p.HasExited) { throw "Die EXE hat sich sofort beendet (Exit $($p.ExitCode))." }
           Stop-Process -Id $p.Id -Force
@@ -71,9 +78,9 @@ jobs:
 
       - name: Pruefsumme
         run: |
-          $h = (Get-FileHash "dist\$env:NAME.exe" -Algorithm SHA256).Hash
+          $h = (Get-FileHash "dist\$env:ASSET" -Algorithm SHA256).Hash
           Write-Output "SHA-256: $h"
-          "$h  $env:NAME.exe" | Out-File -Encoding ascii "dist\SHA256SUMS.txt"
+          "$h  $env:ASSET" | Out-File -Encoding ascii "dist\SHA256SUMS.txt"
 
       - uses: actions/upload-artifact@v7
         with:
