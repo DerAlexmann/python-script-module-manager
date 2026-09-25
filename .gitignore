@@ -1,0 +1,21 @@
+# Bauen
+build/
+dist/
+*.spec
+
+# Python
+__pycache__/
+*.py[cod]
+.ruff_cache/
+.pytest_cache/
+.venv/
+venv/
+
+# Laufzeit: die Einstellungen entstehen neben dem Programm
+python-script-module-manager.json
+python-script-module-manager.json.tmp
+buttons_config.json
+
+# Windows
+Thumbs.db
+desktop.ini
