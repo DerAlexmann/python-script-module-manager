@@ -1,5 +1,5 @@
 """
-Python-Script & Module Manager 2.0.0 - Scripts starten, Module verwalten
+Python-Script & Module Manager 2.0.1 - Scripts starten, Module verwalten
 
 Startet Python-Scripts mit sichtbarer Ausgabe, prueft vorab, ob ihre
 Abhaengigkeiten vorhanden sind, und verwaltet die Module jeder gefundenen
@@ -33,7 +33,7 @@ import time
 from datetime import datetime
 
 PROGRAMM = "Python-Script & Module Manager"
-VERSION = "2.0.0"
+VERSION = "2.0.1"
 
 # Von gui_starten() belegt, sobald Tkinter geladen ist.
 _tk = None

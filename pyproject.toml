@@ -1,6 +1,6 @@
 [project]
 name = "python-script-module-manager"
-version = "2.0.0"
+version = "2.0.1"
 description = "Python-Scripts starten, ihre Abhängigkeiten prüfen und die Module aller Python-Installationen verwalten"
 readme = "README.md"
 requires-python = ">=3.10"
