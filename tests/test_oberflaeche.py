@@ -162,6 +162,26 @@ def test_zustimmung_startet_pip_uninstall(pm, fenster, grund_cfg, monkeypatch):
     assert argumente == ["uninstall", "-y", "requests"]
 
 
+def test_pip_option_als_paketname_wird_abgewiesen(pm, fenster, grund_cfg, monkeypatch):
+    """Was mit "-" beginnt, liest pip als Option - so etwas geht nicht an pip."""
+    app = fenster.bauen(grund_cfg)
+    schluessel = grund_cfg["installationen"][0]["key"]
+    meldungen, auftraege = [], []
+
+    class Zustimmen:
+        def __init__(self, *args, **kwargs):
+            self.ergebnis, self.option, self.eingabe_text = True, "eine", ""
+
+    monkeypatch.setattr(pm, "Dialog", Zustimmen)
+    monkeypatch.setattr(pm, "melden", lambda *args, **kwargs: meldungen.append(kwargs))
+    monkeypatch.setattr(app, "pip_ausfuehren", auftraege.append)
+    app.installieren_anfragen(["neuespaket", "--index-url=http://beispiel/simple"], schluessel)
+    assert auftraege == []
+    assert meldungen == [{"art": "fehler"}]
+    assert "--index-url=http://beispiel/simple" not in app.cfg["bekannte_module"].get(
+        schluessel, {}).values()
+
+
 def test_alte_scriptliste_wird_uebernommen(pm, fenster, grund_cfg, tmp_path, monkeypatch):
     alt = tmp_path / pm.ALTE_CONFIG
     alt.write_text('[{"name": "Altes Script", "path": "C:/x/alt.py"}]', encoding="utf-8")

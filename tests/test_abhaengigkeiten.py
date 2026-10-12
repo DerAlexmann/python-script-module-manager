@@ -107,6 +107,18 @@ def test_import_module_mit_festem_namen(pm, tmp_path):
     assert ".relativ" not in gefunden
 
 
+def test_import_module_ohne_modulnamen_wird_nicht_vorgeschlagen(pm, tmp_path):
+    """Ein Script darf pip über import_module() keine Optionen unterschieben."""
+    gefunden = funde(pm, tmp_path, """
+        import importlib
+        importlib.import_module("--extra-index-url=http://3232235777/simple")
+        __import__("-e git+https://beispiel/x")
+        importlib.import_module("mit leerzeichen")
+        importlib.import_module("paket.unter_modul")
+    """)
+    assert set(gefunden) == {"importlib", "paket.unter_modul"}
+
+
 def test_syntaxfehler_wird_gemeldet(pm, tmp_path):
     gefunden, syntaxfehler = pm.importe_lesen(script(tmp_path, "def kaputt(:\n    pass\n"))
     assert gefunden == {}

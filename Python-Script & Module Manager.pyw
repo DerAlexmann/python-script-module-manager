@@ -1024,7 +1024,8 @@ class ImportSammler(ast.NodeVisitor):
         name = funktion.attr if isinstance(funktion, ast.Attribute) else getattr(funktion, "id", "")
         if (name in ("import_module", "__import__") and node.args
                 and isinstance(node.args[0], ast.Constant) and isinstance(node.args[0].value, str)
-                and not node.args[0].value.startswith(".")):
+                # nur echte Modulnamen: sonst landet z. B. "--index-url=..." bei pip
+                and all(teil.isidentifier() for teil in node.args[0].value.split("."))):
             self._merken(node.args[0].value, node.lineno)
         self.generic_visit(node)
 
@@ -3308,6 +3309,12 @@ class ManagerApp:
         inst = self.installation(schluessel)
         if not inst:
             return
+        optionen_im_namen = [n for n in namen if n.startswith("-")]
+        if optionen_im_namen:                # pip laese sie als Option, nicht als Paket
+            melden(self, _("Modul installieren"),
+                   _("„{name}“ ist kein Paketname. pip-Optionen lassen sich in der Konsole "
+                     "angeben.").format(name=optionen_im_namen[0]), art="fehler")
+            return
         liste = ", ".join(namen)
         optionen = [(tr(_("Nur in {python}").format(python=installation_titel(inst))), "eine")]
         andere = [i for i in self.installationen() if i["key"] != schluessel]
@@ -3942,6 +3949,8 @@ TRANSLATIONS = {
             "“python -m ensurepip”.",
         "Überall schon vorhanden – nichts zu tun.":
             "Already present everywhere – nothing to do.",
+        "„{name}“ ist kein Paketname. pip-Optionen lassen sich in der Konsole angeben.":
+            "“{name}” is not a package name. pip options can be given in the console.",
         "Modul deinstallieren": "Uninstall module",
         "„{name}“ ist in keiner Installation vorhanden.":
             "“{name}” is not present in any installation.",

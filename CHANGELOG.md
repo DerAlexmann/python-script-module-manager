@@ -3,6 +3,19 @@
 Das Format folgt [Keep a Changelog](https://keepachangelog.com/de/1.1.0/),
 die Versionsnummern der [semantischen Versionierung](https://semver.org/lang/de/).
 
+## [Unveröffentlicht]
+
+### Sicherheit
+
+- Die Abhängigkeitsprüfung übernimmt aus `import_module("…")` und
+  `__import__("…")` nur noch echte Modulnamen. Bisher konnte ein Script dort
+  zum Beispiel `--extra-index-url=…` hineinschreiben; der Text erschien als
+  fehlendes Paket, und „Fehlende installieren“ hätte ihn als Option an pip
+  weitergereicht, das dann auch auf einem fremden Server nach Paketen gesucht
+  hätte.
+- Paketnamen, die mit `-` beginnen, gibt das Programm grundsätzlich nicht
+  mehr an `pip install` weiter, auch nicht aus „Modul hinzufügen“.
+
 ## [2.0.1] – 2026-09-26
 
 ### Geändert
