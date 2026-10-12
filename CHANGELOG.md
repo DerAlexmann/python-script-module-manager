@@ -3,7 +3,7 @@
 Das Format folgt [Keep a Changelog](https://keepachangelog.com/de/1.1.0/),
 die Versionsnummern der [semantischen Versionierung](https://semver.org/lang/de/).
 
-## [Unveröffentlicht]
+## [2.0.2] – 2026-10-12
 
 ### Sicherheit
 
