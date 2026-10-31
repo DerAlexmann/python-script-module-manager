@@ -1,0 +1,10 @@
+# Fürs Bauen der Windows-EXE. Hier steht eine genaue Fassung statt einer
+# Untergrenze: Eine fehlerhafte neue Fassung soll keinen Release kippen, und der
+# Bootloader von PyInstaller steckt in jeder ausgelieferten EXE. Dependabot hebt
+# die Zeile an, dann wird die neue Fassung einmal bewusst geprüft.
+#
+# Das Programm selbst braucht keine Pakete. Mitgezogene Abhängigkeiten von
+# PyInstaller und das Laufzeitabbild sind nicht festgelegt, und das hier ist kein
+# Hash-Pin: Bit für Bit reproduzierbar ist der Bau also nicht.
+
+pyinstaller==6.22.3
