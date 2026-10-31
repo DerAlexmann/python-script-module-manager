@@ -133,7 +133,7 @@ language right away. Untranslated lines fall back to German automatically.
 ## Building it yourself
 
 ```bash
-pip install pyinstaller
+pip install -r requirements-build.txt
 build.cmd
 ```
 
@@ -152,3 +152,7 @@ welcome). Please report security issues through the route described in
 
 [MIT](LICENSE) – Copyright 2026 Alexander Unverhau.
 Created with assistance of Claude AI.
+
+The Windows executable additionally contains components from other projects.
+They are listed in [DRITTANBIETER-LIZENZEN.md](DRITTANBIETER-LIZENZEN.md), which
+is attached to every release. See also [NOTICE](NOTICE).

@@ -3,6 +3,27 @@
 Das Format folgt [Keep a Changelog](https://keepachangelog.com/de/1.1.0/),
 die Versionsnummern der [semantischen Versionierung](https://semver.org/lang/de/).
 
+## [2.0.3] – 2026-10-31
+
+Das Programm selbst ändert sich nicht, nur die Auslieferung der EXE.
+
+### Hinzugefügt
+
+- `DRITTANBIETER-LIZENZEN.md` und `NOTICE` nennen die Fremdkomponenten der EXE
+  mit Lizenz und Quelle. Die Lizenzdatei liegt jedem Release bei, dort mit den
+  vollständigen Texten von Python und PyInstaller.
+- Die EXE trägt Produktname, Version und Urheber in den Dateieigenschaften.
+
+### Geändert
+
+- Die EXE entsteht mit einer festen PyInstaller-Fassung
+  (`requirements-build.txt`). Das ist kein Hash-Pin, und mitgezogene
+  Abhängigkeiten sind nicht festgelegt: Bit für Bit reproduzierbar ist der Bau
+  also nicht.
+- Der Release-Bau prüft jetzt, ob das Programmfenster erscheint und die Version
+  der EXE zum Tag passt. Fehlende Dateien lassen ihn scheitern, und er lässt
+  sich ohne Tag proben.
+
 ## [2.0.2] – 2026-10-12
 
 ### Sicherheit

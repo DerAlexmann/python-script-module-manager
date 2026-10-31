@@ -138,7 +138,7 @@ sofort an. Nicht übersetzte Zeilen erscheinen automatisch auf Deutsch.
 ## Selbst bauen
 
 ```bash
-pip install pyinstaller
+pip install -r requirements-build.txt
 build.cmd
 ```
 
@@ -156,3 +156,7 @@ Sicherheitslücken bitte nicht als Issue, sondern über den Weg in
 
 [MIT](LICENSE) – Copyright 2026 Alexander Unverhau.
 Erstellt mit Unterstützung von Claude AI.
+
+Die Windows-EXE enthält zusätzlich Komponenten anderer Projekte. Sie sind in
+[DRITTANBIETER-LIZENZEN.md](DRITTANBIETER-LIZENZEN.md) aufgeführt, die Datei
+liegt jedem Release bei. Siehe auch [NOTICE](NOTICE).

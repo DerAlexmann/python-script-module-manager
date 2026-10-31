@@ -39,3 +39,18 @@ jobs:
       # Auf den Linux-Läufern fehlt eine Anzeige; die Tests der Oberfläche
       # überspringen sich dort von selbst, die übrigen laufen überall.
       - run: python -m pytest tests -q
+
+  bauversionen:
+    name: Feste Bauversionen
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements-dev.txt -r requirements-build.txt
+      # Wie im Release: Die Versionsdatei muss PyInstaller wirklich annehmen,
+      # und BAU_PFLICHT verbietet das Überspringen dieser Prüfungen.
+      - run: python -m pytest tests/test_verpackung.py -q
+        env:
+          BAU_PFLICHT: "1"

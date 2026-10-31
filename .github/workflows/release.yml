@@ -33,12 +33,15 @@ jobs:
       - name: ZIP packen
         run: |
           mkdir -p "out/$NAME"
-          cp "$NAME.pyw" README.md README.en.md LICENSE CHANGELOG.md "out/$NAME/"
-          cd out && zip -r "python-script-module-manager-${GITHUB_REF_NAME}-quellen.zip" "$NAME"
+          cp "$NAME.pyw" README.md README.en.md LICENSE NOTICE DRITTANBIETER-LIZENZEN.md CHANGELOG.md "out/$NAME/"
+          # Schraegstriche im Ref-Namen ersetzen: Ein Probelauf von einem Zweig
+          # wie dependabot/pip/... zeigte sonst in einen Ordner, den es nicht gibt.
+          cd out && zip -r "python-script-module-manager-${GITHUB_REF_NAME//\//-}-quellen.zip" "$NAME"
 
       - uses: actions/upload-artifact@v7
         with:
           name: quellpaket
+          if-no-files-found: error
           path: out/*.zip
 
   windows-exe:
@@ -54,27 +57,53 @@ jobs:
       - name: PyInstaller installieren
         run: |
           python -m pip install --upgrade pip
-          pip install pyinstaller
+          pip install -r requirements-build.txt
+
+      - name: Versionsangaben erzeugen
+        run: python versionsinfo_erzeugen.py
 
       - name: EXE bauen
         run: >
           pyinstaller --noconfirm --onefile --windowed
           --name "${{ env.NAME }}"
           --icon "script_module_manager.ico"
+          --version-file "versionsinfo.txt"
           "${{ env.NAME }}.pyw"
 
       - name: Download-Namen vergeben
         run: Move-Item "dist\$env:NAME.exe" "dist\$env:ASSET"
 
-      - name: Startet die EXE ueberhaupt?
-        # Ein reiner Rauchtest: die EXE wird gestartet und nach einer Weile
-        # beendet. Faellt sie sofort um, schlaegt der Job fehl.
+      - name: Versionsangaben der EXE pruefen
+        # Liest die fertige Datei zurueck; bei einem Tag muss die Version dazu
+        # passen, sonst wurde die Anhebung von VERSION vergessen.
         run: |
+          $info = (Get-Item "dist\$env:ASSET").VersionInfo
+          if (-not $info.ProductName -or -not $info.ProductVersion) {
+            throw "Die EXE traegt keine Versionsangaben."
+          }
+          Write-Output "$($info.ProductName) $($info.ProductVersion)"
+          if ($env:GITHUB_REF_TYPE -eq 'tag' -and "v$($info.ProductVersion)" -ne $env:GITHUB_REF_NAME) {
+            throw "Tag $env:GITHUB_REF_NAME passt nicht zu Version $($info.ProductVersion)."
+          }
+
+      - name: Erreicht die EXE das Programmfenster?
+        # Der Prozess allein beweist wenig: Auch ein Fehlerfenster haelt ihn am
+        # Leben. Deshalb wird auf den Titel des Hauptfensters gewartet. Die EXE
+        # entpackt sich in einen Kindprozess, beide tragen denselben Namen.
+        run: |
+          $stamm = [IO.Path]::GetFileNameWithoutExtension($env:ASSET)
           $p = Start-Process -FilePath "dist\$env:ASSET" -PassThru
-          Start-Sleep -Seconds 25
-          if ($p.HasExited) { throw "Die EXE hat sich sofort beendet (Exit $($p.ExitCode))." }
-          Stop-Process -Id $p.Id -Force
-          Write-Output "EXE laeuft."
+          $fenster = $null
+          foreach ($i in 1..90) {
+            Start-Sleep -Seconds 1
+            $fenster = Get-Process -Name $stamm -ErrorAction SilentlyContinue |
+              Where-Object { $_.MainWindowTitle -eq $env:NAME } | Select-Object -First 1
+            if ($fenster) { break }
+            if ($p.HasExited) { throw "Die EXE hat sich beendet (Exit $($p.ExitCode))." }
+          }
+          if (-not $fenster) { throw "Das Programmfenster erschien nicht." }
+          Get-Process -Name $stamm | Stop-Process -Force
+          Write-Output "Programmfenster erreicht."
 
       - name: Pruefsumme
         run: |
@@ -82,17 +111,27 @@ jobs:
           Write-Output "SHA-256: $h"
           "$h  $env:ASSET" | Out-File -Encoding ascii "dist\SHA256SUMS.txt"
 
+      - name: Lizenzhinweise neben die EXE legen
+        # Ergaenzt die Datei um die Texte von Python und PyInstaller aus genau
+        # diesem Bau; fehlt einer, bricht der Job ab.
+        run: python lizenzen_anfuegen.py
+
       - uses: actions/upload-artifact@v7
         with:
           name: windows-exe
+          if-no-files-found: error
           path: |
             dist/*.exe
             dist/SHA256SUMS.txt
+            dist/DRITTANBIETER-LIZENZEN.md
 
   release:
     name: Release-Entwurf anlegen
     needs: [quellpaket, windows-exe]
     runs-on: ubuntu-latest
+    # Ohne Tag kennt die Action keinen Namen fuer den Release. Ein Probelauf
+    # per workflow_dispatch soll bauen und pruefen, ohne hier rot zu werden.
+    if: github.ref_type == 'tag'
     steps:
       - uses: actions/download-artifact@v8
         with:
@@ -103,7 +142,9 @@ jobs:
         with:
           draft: true          # erst pruefen, dann von Hand veroeffentlichen
           generate_release_notes: true
+          fail_on_unmatched_files: true
           files: |
             artefakte/quellpaket/*.zip
             artefakte/windows-exe/*.exe
             artefakte/windows-exe/SHA256SUMS.txt
+            artefakte/windows-exe/DRITTANBIETER-LIZENZEN.md

@@ -23,6 +23,8 @@ private Meldung – siehe [SECURITY.md](SECURITY.md).
 | `Python-Script & Module Manager.pyw` | das ganze Programm, eine Datei |
 | `tests/` | Tests für Importerkennung, Einlesen, Sprachtabelle und Oberfläche |
 | `build.cmd`, `icon_erzeugen.py` | EXE und Programmsymbol erzeugen |
+| `versionsinfo_erzeugen.py` | Versionsangaben der EXE aus `VERSION` |
+| `lizenzen_anfuegen.py` | Lizenzdatei für das Release zusammenstellen |
 | `.github/workflows/` | CI und das Bauen der Releases |
 
 Die Programmdatei ist von oben nach unten gegliedert: Farbschemata,
@@ -85,6 +87,8 @@ Nicht übersetzte Zeilen erscheinen automatisch auf Deutsch.
 - Tests und `ruff` müssen durchlaufen; die CI prüft beides.
 - Für sichtbare Änderungen einen Eintrag in `CHANGELOG.md` unter
   „Unveröffentlicht" ergänzen.
+- Ändert sich, was in der EXE steckt, gehört das in
+  `DRITTANBIETER-LIZENZEN.md` (beide Sprachen).
 - Bildschirmfotos zeigen ausschließlich das Programmfenster – kein Desktop,
   keine anderen Fenster, keine persönlichen Pfade oder Paketlisten.
 
