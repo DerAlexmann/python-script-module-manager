@@ -10,7 +10,7 @@ dark.
 
 *[Deutsche Fassung: README.md](README.md)*
 
-![The "Scripts" tab in the dark scheme, in English](docs/screenshots/scripts-dunkel-en.png)
+![The "Scripts" tab in the dark scheme, in English: output of three scripts, one of them answered through the input line](docs/screenshots/scripts-dunkel-en.png)
 
 ## What it does
 
@@ -26,6 +26,12 @@ dark.
   window height allows. Turn pages with ◀/▶ or with the mouse wheel.
 - **Script output** live, error output in red. Several scripts may run at the
   same time. Each script runs in its own folder, so relative paths work.
+- **Input:** when a script asks for something with `input()`, the **Input to**
+  line below the output takes the answer; Enter sends it. With several scripts
+  running, you choose next to it which one gets it. **End** closes the input
+  for scripts that read until the end of input. Scripts that ask for passwords
+  (`getpass`) or single keys (`msvcrt`, `curses`) run in a console window of
+  their own, which stays open after the end until you press Enter.
 - **Copy error messages:** as soon as a script writes to the error output or
   ends with an error code, the button turns red. It puts script, path, Python
   version, traceback and exit code on the clipboard.
@@ -73,7 +79,10 @@ script. The rules:
 - **Refresh list** picks up newly installed modules and marks removed ones.
   When this happens is up to you: *automatically* (at every start and after
   the console is closed) or *by the user* (only at the first start and at the
-  push of a button).
+  push of a button). Either way, the program notices when something was
+  installed or removed outside of it – with `pip` in a console, say: at start,
+  when you return to the window and on "Check dependencies". Only the affected
+  installation is read again.
 - **Open console:** a command prompt in which `python` and `pip` belong to
   the selected installation.
 - **Open folder:** the installation's folder in Explorer, with `python.exe`

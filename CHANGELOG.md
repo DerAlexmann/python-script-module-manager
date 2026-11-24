@@ -3,6 +3,31 @@
 Das Format folgt [Keep a Changelog](https://keepachangelog.com/de/1.1.0/),
 die Versionsnummern der [semantischen Versionierung](https://semver.org/lang/de/).
 
+## [2.0.4] – 2026-11-24
+
+### Hinzugefügt
+
+- **Eingaben an laufende Scripts:** Die neue Zeile „Eingabe an“ unter der
+  Script-Ausgabe schickt Antworten an Scripts, die mit `input()` oder
+  `sys.stdin` lesen; „Ende“ schließt die Eingabe. Fragen ohne Zeilenumbruch
+  erscheinen sofort, die Ausgabe wird dafür stückweise statt zeilenweise
+  gelesen.
+- Scripts, die Passwörter (`getpass`) oder einzelne Tasten (`msvcrt`,
+  `curses`) abfragen, starten in einem eigenen Konsolenfenster, das nach dem
+  Ende offen bleibt, bis Enter gedrückt wird. Der Tooltip des Scripts nennt
+  den jeweiligen Weg.
+
+### Behoben
+
+- Scripts mit `input()` brachen sofort mit `EOFError` ab, weil sie keine
+  Eingabe bekamen.
+- Außerhalb des Programms installierte Module – etwa mit `pip` in einer
+  Konsole – galten bei der Einstellung „durch Benutzer“ weiter als fehlend.
+  Das Programm vergleicht jetzt den Stand der Paketordner jeder Installation
+  beim Start, bei der Rückkehr ins Fenster und bei „Abhängigkeiten prüfen“ und
+  liest bei einer Änderung nur diese Installation neu ein. Modullisten älterer
+  Versionen werden dafür einmal neu eingelesen.
+
 ## [2.0.3] – 2026-10-31
 
 Das Programm selbst ändert sich nicht, nur die Auslieferung der EXE.

@@ -45,7 +45,7 @@ def modul_daten(pakete, toplevel=()):
     """Eingelesene Daten einer erfundenen Installation."""
     return {"stdlib": sorted(set(sys.stdlib_module_names) | {"__future__"}),
             "toplevel": list(toplevel), "pip": True, "zeit": "2026-01-01T10:00:00",
-            "dists": pakete}
+            "dists": pakete, "orte": [], "stempel": {}}   # ohne Paketordner: nie veraltet
 
 
 def tk_wurzel_anlegen(tk, versuche=4):

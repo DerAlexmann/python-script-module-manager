@@ -14,7 +14,7 @@ def script(tmp_path, quelltext, name="script.py"):
 
 
 def funde(pm, tmp_path, quelltext):
-    gefunden, syntaxfehler = pm.importe_lesen(script(tmp_path, quelltext))
+    gefunden, syntaxfehler, _eingabe = pm.importe_lesen(script(tmp_path, quelltext))
     assert syntaxfehler is None
     return gefunden
 
@@ -120,7 +120,9 @@ def test_import_module_ohne_modulnamen_wird_nicht_vorgeschlagen(pm, tmp_path):
 
 
 def test_syntaxfehler_wird_gemeldet(pm, tmp_path):
-    gefunden, syntaxfehler = pm.importe_lesen(script(tmp_path, "def kaputt(:\n    pass\n"))
+    pfad = script(tmp_path, "def kaputt(:\n    pass\n")
+    gefunden, syntaxfehler, eingabe = pm.importe_lesen(pfad)
+    assert eingabe is None
     assert gefunden == {}
     assert syntaxfehler[0] == 1
 
@@ -133,7 +135,7 @@ def index(pm, *pakete, toplevel=()):
 
 def pruefen(pm, tmp_path, quelltext, idx, weitere=()):
     pfad = script(tmp_path, quelltext)
-    gefunden, _fehler = pm.importe_lesen(pfad)
+    gefunden, _fehler, _eingabe = pm.importe_lesen(pfad)
     return pm.abhaengigkeiten_pruefen(pfad, gefunden, idx, weitere)
 
 

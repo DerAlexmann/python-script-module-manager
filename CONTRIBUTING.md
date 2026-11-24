@@ -21,7 +21,7 @@ private Meldung – siehe [SECURITY.md](SECURITY.md).
 | Datei | Inhalt |
 |---|---|
 | `Python-Script & Module Manager.pyw` | das ganze Programm, eine Datei |
-| `tests/` | Tests für Importerkennung, Einlesen, Sprachtabelle und Oberfläche |
+| `tests/` | Tests für Importerkennung, Einlesen, Eingaben, Sprachtabelle und Oberfläche |
 | `build.cmd`, `icon_erzeugen.py` | EXE und Programmsymbol erzeugen |
 | `versionsinfo_erzeugen.py` | Versionsangaben der EXE aus `VERSION` |
 | `lizenzen_anfuegen.py` | Lizenzdatei für das Release zusammenstellen |
