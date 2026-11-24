@@ -16,6 +16,11 @@ def test_modul_probe_liefert_die_erwarteten_felder(pm):
     assert {"os", "json", "tkinter"} <= set(daten["stdlib"])
     assert daten["pip"] is True
     assert daten["zeit"]
+    # pytest liegt in einem Paketordner; dessen Stand wird fuer den
+    # spaeteren Vergleich mitgeliefert.
+    assert any(ort.lower().endswith(("site-packages", "dist-packages")) for ort in daten["orte"])
+    assert set(daten["stempel"]) == set(daten["orte"])
+    assert not pm.module_veraltet(daten)
     for eintrag in daten["dists"]:
         assert {"name", "version", "top", "sub", "requires"} <= set(eintrag)
 

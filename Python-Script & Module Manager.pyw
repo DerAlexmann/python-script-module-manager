@@ -1,5 +1,5 @@
 """
-Python-Script & Module Manager 2.0.3 - Scripts starten, Module verwalten
+Python-Script & Module Manager 2.0.4 - Scripts starten, Module verwalten
 
 Startet Python-Scripts mit sichtbarer Ausgabe, prueft vorab, ob ihre
 Abhaengigkeiten vorhanden sind, und verwaltet die Module jeder gefundenen
@@ -18,6 +18,7 @@ Benoetigt nur die Standardbibliothek (Tkinter gehoert dazu).
 from __future__ import annotations
 
 import ast
+import codecs
 import json
 import locale
 import math
@@ -33,7 +34,7 @@ import time
 from datetime import datetime
 
 PROGRAMM = "Python-Script & Module Manager"
-VERSION = "2.0.3"
+VERSION = "2.0.4"
 
 # Von gui_starten() belegt, sobald Tkinter geladen ist.
 _tk = None
@@ -348,6 +349,88 @@ def verdeckt_ausfuehren(befehl, timeout=60, cwd=None):
         timeout=timeout, cwd=cwd or tempfile.gettempdir(), env=utf8_umgebung(),
         stdin=subprocess.DEVNULL, creationflags=OHNE_FENSTER)
     return ergebnis.returncode, ergebnis.stdout, ergebnis.stderr
+
+
+class StromDekoder:
+    """Bytes aus einer Pipe stueckweise in Text verwandeln.
+
+    Gelesen wird in Stuecken statt in Zeilen, damit eine Frage wie
+    ``input("Zahl: ")`` sofort erscheint - sie endet ohne Zeilenumbruch.
+    Ein UTF-8-Zeichen oder ein Windows-Zeilenende kann dabei auf zwei Stuecke
+    verteilt ankommen; beides wird zusammengesetzt, und alle Zeilenenden
+    werden wie im Textmodus von Python zu einem einfachen Zeilenumbruch.
+    """
+
+    def __init__(self):
+        self._dekoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
+        self._offenes_cr = False
+
+    def _zeilenenden(self, text):
+        if self._offenes_cr:
+            text = "\r" + text
+        self._offenes_cr = text.endswith("\r")
+        if self._offenes_cr:
+            text = text[:-1]
+        return text.replace("\r\n", "\n").replace("\r", "\n")
+
+    def stueck(self, daten: bytes) -> str:
+        return self._zeilenenden(self._dekoder.decode(daten))
+
+    def ende(self) -> str:
+        text = self._zeilenenden(self._dekoder.decode(b"", final=True))
+        if self._offenes_cr:
+            self._offenes_cr = False
+            text += "\n"
+        return text
+
+
+def praefix_einfuegen(text: str, praefix: str, am_anfang: bool):
+    """praefix vor jede Zeile setzen, die in text beginnt.
+
+    am_anfang sagt, ob das vorige Stueck mit einem Zeilenende aufhoerte;
+    zurueck kommen der Text und derselbe Zustand fuer das naechste Stueck.
+    """
+    teile = text.split("\n")
+    for nummer, teil in enumerate(teile):
+        if nummer:
+            am_anfang = True
+        if teil:
+            if am_anfang:
+                teile[nummer] = praefix + teil
+            am_anfang = False
+    return "\n".join(teile), am_anfang
+
+
+# Startet ein Script in einem eigenen Konsolenfenster und laesst das Fenster
+# danach offen, bis Enter gedrueckt wird - sonst verschwaende die letzte
+# Ausgabe samt Fehlermeldung, bevor man sie lesen kann. Laeuft in der
+# gewaehlten Installation, also auch unter aelteren Python-Fassungen.
+# Aufruf: python -c KONSOLEN_START <script> <Abschiedstext>
+KONSOLEN_START = r'''
+import os, runpy, sys
+pfad, abschied = sys.argv[1], sys.argv[2]
+sys.argv = [pfad]
+sys.path[0] = os.path.dirname(os.path.abspath(pfad))
+code = 0
+try:
+    runpy.run_path(pfad, run_name="__main__")
+except SystemExit as ende:
+    if ende.code is None or isinstance(ende.code, int):
+        code = ende.code or 0
+    else:
+        sys.stderr.write("%s\n" % (ende.code,))
+        code = 1
+except BaseException:
+    import traceback
+    traceback.print_exc()
+    code = 1
+sys.stdout.flush()
+try:
+    input("\n" + abschied)
+except BaseException:
+    pass
+sys.exit(code)
+'''
 
 
 def kanon(name: str) -> str:
@@ -826,8 +909,53 @@ for p in pakete:
     p["sub"] = [s for s in p["sub"]
                 if anzahl.get(s.split(".")[0], 0) > 1 or s.split(".")[0] in namensraum]
 e["dists"] = pakete
+orte = []
+for p in sys.path:
+    try:
+        if (p and os.path.basename(os.path.normpath(p)).lower() in ("site-packages",
+                "dist-packages") and os.path.isdir(p) and p not in orte):
+            orte.append(p)
+    except Exception:
+        pass
+try:
+    import site
+    if getattr(site, "ENABLE_USER_SITE", False):
+        u = site.getusersitepackages()
+        if u and u not in orte:
+            orte.append(u)
+except Exception:
+    pass
+e["orte"] = orte
 sys.stdout.write(json.dumps(e))
 '''
+
+
+def orte_stempel(orte) -> dict:
+    """Aenderungszeit je Paketordner; None fuer Ordner, die (noch) nicht existieren.
+
+    pip legt bei jeder Installation, Aktualisierung und Deinstallation Eintraege
+    im Paketordner an oder entfernt sie - dabei aendert sich dessen Zeitstempel.
+    """
+    stempel = {}
+    for ort in orte:
+        try:
+            stempel[ort] = os.stat(ort).st_mtime_ns
+        except OSError:
+            stempel[ort] = None
+    return stempel
+
+
+def module_veraltet(daten) -> bool:
+    """Hat sich seit dem Einlesen in den Paketordnern der Installation etwas geaendert?
+
+    Daten aus aelteren Versionen ohne Stempel gelten als veraltet und werden
+    damit einmal neu eingelesen.
+    """
+    if not daten or "dists" not in daten:
+        return False
+    if "stempel" not in daten:
+        return True
+    return orte_stempel(daten["stempel"]) != daten["stempel"]
 
 
 def module_einlesen(exe: str) -> dict:
@@ -848,6 +976,7 @@ def module_einlesen(exe: str) -> dict:
     except (ValueError, IndexError):
         return {"fehler": aus.strip()[-800:]}
     daten["zeit"] = datetime.now().isoformat(timespec="seconds")
+    daten["stempel"] = orte_stempel(daten.get("orte", ()))
     return daten
 
 
@@ -933,6 +1062,16 @@ PAKETNAMEN = {
 }
 
 
+# Was ein Script ueber diese Aufrufe abfragt, laesst sich nicht als Zeile
+# durch eine Pipe schicken: Passwoerter ohne Echo, einzelne Tastendruecke,
+# Vollbild-Oberflaechen. Solche Scripts brauchen ein echtes Konsolenfenster.
+KONSOLEN_AUFRUFE = {
+    "getpass": {"getpass"},
+    "msvcrt": {"getch", "getwch", "getche", "getwche", "kbhit"},
+}
+KONSOLEN_MODULE = {"curses"}
+
+
 class ImportSammler(ast.NodeVisitor):
     """Sammelt die Importe eines Scripts - mit Blick auf verschachtelte Faelle.
 
@@ -948,6 +1087,9 @@ class ImportSammler(ast.NodeVisitor):
       Namen zaehlen ebenfalls.
     - Bei ``from a.b import c`` kann c ein Untermodul sein; "a.b.c" wird als
       Kandidat vermerkt, damit Namensraum-Pakete richtig zugeordnet werden.
+    - Nebenbei merkt er sich, ob das Script Eingaben liest: ``input()`` und
+      ``sys.stdin`` gehen ueber die Eingabezeile der App, Passwort- und
+      Tastenabfragen (KONSOLEN_AUFRUFE) brauchen ein Konsolenfenster.
     """
 
     FAENGT = {"ImportError", "ModuleNotFoundError", "Exception", "BaseException"}
@@ -955,6 +1097,13 @@ class ImportSammler(ast.NodeVisitor):
     def __init__(self):
         self.funde = {}            # Modul -> {"optional": bool, "zeile": int, "kandidaten": set}
         self._optional = 0
+        self.eingabe = None        # None, "zeile" (input, sys.stdin) oder "konsole"
+        self._aliase = {}          # Name im Script -> Modul, etwa gp -> getpass
+        self._konsolen_namen = set()   # per from-Import geholte Konsolenfunktionen
+
+    def _eingabe_merken(self, art):
+        if self.eingabe != "konsole":
+            self.eingabe = art
 
     def _merken(self, modul, zeile, kandidaten=()):
         if not modul or modul.split(".")[0] in ("__future__", "__main__"):
@@ -1012,16 +1161,41 @@ class ImportSammler(ast.NodeVisitor):
     def visit_Import(self, node):
         for alias in node.names:
             self._merken(alias.name, node.lineno)
+            self._aliase[alias.asname or alias.name.split(".")[0]] = alias.name
+            if alias.name.split(".")[0] in KONSOLEN_MODULE:
+                self._eingabe_merken("konsole")
 
     def visit_ImportFrom(self, node):
         if node.level or not node.module:
             return                           # relativ: gehoert zum Script selbst
         kandidaten = {f"{node.module}.{a.name}" for a in node.names if a.name != "*"}
         self._merken(node.module, node.lineno, kandidaten)
+        if node.module.split(".")[0] in KONSOLEN_MODULE:
+            self._eingabe_merken("konsole")
+        for alias in node.names:
+            if alias.name in KONSOLEN_AUFRUFE.get(node.module, ()):
+                self._konsolen_namen.add(alias.asname or alias.name)
+            elif node.module == "sys" and alias.name == "stdin":
+                self._eingabe_merken("zeile")
+
+    def visit_Attribute(self, node):
+        if (node.attr == "stdin" and isinstance(node.value, ast.Name)
+                and self._aliase.get(node.value.id, node.value.id) == "sys"):
+            self._eingabe_merken("zeile")
+        self.generic_visit(node)
 
     def visit_Call(self, node):
         funktion = node.func
         name = funktion.attr if isinstance(funktion, ast.Attribute) else getattr(funktion, "id", "")
+        if isinstance(funktion, ast.Name):
+            if name in self._konsolen_namen:
+                self._eingabe_merken("konsole")
+            elif name == "input":
+                self._eingabe_merken("zeile")
+        elif isinstance(funktion, ast.Attribute) and isinstance(funktion.value, ast.Name):
+            modul = self._aliase.get(funktion.value.id, funktion.value.id)
+            if name in KONSOLEN_AUFRUFE.get(modul, ()):
+                self._eingabe_merken("konsole")
         if (name in ("import_module", "__import__") and node.args
                 and isinstance(node.args[0], ast.Constant) and isinstance(node.args[0].value, str)
                 # nur echte Modulnamen: sonst landet z. B. "--index-url=..." bei pip
@@ -1031,18 +1205,22 @@ class ImportSammler(ast.NodeVisitor):
 
 
 def importe_lesen(pfad: str):
-    """Importe eines Scripts; liefert (Funde, Syntaxfehler oder None)."""
+    """Importe eines Scripts; liefert (Funde, Syntaxfehler oder None, Eingabeart).
+
+    Die Eingabeart ist None, "zeile" (input, sys.stdin) oder "konsole"
+    (siehe KONSOLEN_AUFRUFE).
+    """
     with open(pfad, "rb") as datei:
         quelltext = datei.read()
     try:
         baum = ast.parse(quelltext, filename=pfad)
     except SyntaxError as fehler:
-        return {}, (fehler.lineno or 0, fehler.msg or "")
+        return {}, (fehler.lineno or 0, fehler.msg or ""), None
     except ValueError as fehler:             # z. B. Nullbytes in der Datei
-        return {}, (0, str(fehler))
+        return {}, (0, str(fehler)), None
     sammler = ImportSammler()
     sammler.visit(baum)
-    return sammler.funde, None
+    return sammler.funde, None, sammler.eingabe
 
 
 def ist_lokal(modul: str, ordner: str) -> bool:
@@ -1414,6 +1592,7 @@ def text_tags_faerben(feld):
     feld.tag_configure("ok", foreground=palette["OK"])
     feld.tag_configure("warn", foreground=palette["WARN"])
     feld.tag_configure("leise", foreground=palette["MUTED"])
+    feld.tag_configure("eingabe", foreground=palette["ACCENT"])     # eigene Eingaben
     feld.tag_configure("kopf", foreground=palette["TEXT"], font=("Segoe UI", 10, "bold"))
 
 
@@ -1818,9 +1997,11 @@ class ManagerApp:
 
         self.aufgaben = queue.Queue()        # Auftraege anderer Threads an die Oberflaeche
         self.indizes = {}                    # Schluessel -> ModulIndex
-        self.analysen = {}                   # Pfad -> (Stempel, Funde, Syntaxfehler)
+        self.analysen = {}                   # Pfad -> (Stempel, Funde, Syntaxfehler, Eingabe)
         self.laeufe = {}                     # laufende Scripts
         self.lauf_nummer = 0
+        self._eingabe_ziele = {}             # Titel im Auswahlfeld -> Laufnummer
+        self._modulstand_geprueft = 0.0      # monotonic() der letzten Pruefung
         self.fehlerprotokoll = []            # Fehlermeldungen beendeter Laeufe
         self.zeitplaene = {}
         self.plan_nummer = 0
@@ -1849,6 +2030,9 @@ class ManagerApp:
         master.after(40, self._aufgaben_abarbeiten)
         master.after(300, self._startbereit)
         self._beim_start_einlesen()
+        # Wer in einer Konsole etwas installiert und zurueckwechselt, soll den
+        # neuen Stand sehen, ohne selbst die Modullisten zu aktualisieren.
+        master.bind("<Activate>", self._fenster_aktiviert, add="+")
 
     # -- Einstellungen -----------------------------------------------------
 
@@ -2216,8 +2400,9 @@ class ManagerApp:
                       "Zwischenablage."))
         self.knopf_fehler.pack(side="right", padx=(0, 8))
 
+        self._eingabezeile_bauen(rechts)
         rahmen, self.ausgabe = textfeld(rechts, hoehe=20, schrift=FONT_MONO_SMALL)
-        rahmen.pack(fill="both", expand=True, padx=14, pady=(0, 14))
+        rahmen.pack(fill="both", expand=True, padx=14, pady=(0, 8))
         self.ausgabe.configure(wrap="char")
         text_tags_faerben(self.ausgabe)
         self._kontextmenue_text(self.ausgabe, mit_fehlern=True)
@@ -2365,6 +2550,7 @@ class ManagerApp:
 
     def abhaengigkeiten_neu_pruefen(self):
         self.analysen.clear()
+        self.veraltete_nachlesen()
         self.liste_zeichnen()
         self._modul_baum_fuellen(self.ausfuehrender_schluessel())
         self.meldung(_("Abhängigkeiten aller Scripts neu geprüft."))
@@ -2377,8 +2563,8 @@ class ManagerApp:
         Die Importe selbst werden nur neu gelesen, wenn sich die Datei
         geaendert hat.
         """
-        ergebnis = {"datei_fehlt": False, "syntaxfehler": None, "stdlib": [], "extern": [],
-                    "lokal": [], "fehlt": [], "optional": [], "unbekannt": []}
+        ergebnis = {"datei_fehlt": False, "syntaxfehler": None, "eingabe": None, "stdlib": [],
+                    "extern": [], "lokal": [], "fehlt": [], "optional": [], "unbekannt": []}
         try:
             info = os.stat(pfad)
         except OSError:
@@ -2387,15 +2573,16 @@ class ManagerApp:
         stempel = (info.st_mtime_ns, info.st_size)
         gemerkt = self.analysen.get(pfad)
         if gemerkt and gemerkt[0] == stempel:
-            funde, syntaxfehler = gemerkt[1], gemerkt[2]
+            funde, syntaxfehler, eingabe = gemerkt[1:]
         else:
             try:
-                funde, syntaxfehler = importe_lesen(pfad)
+                funde, syntaxfehler, eingabe = importe_lesen(pfad)
             except OSError:
                 ergebnis["datei_fehlt"] = True
                 return ergebnis
-            self.analysen[pfad] = (stempel, funde, syntaxfehler)
+            self.analysen[pfad] = (stempel, funde, syntaxfehler, eingabe)
         ergebnis["syntaxfehler"] = syntaxfehler
+        ergebnis["eingabe"] = eingabe
         schluessel = self.ausfuehrender_schluessel()
         weitere = [self.index(i["key"]) for i in self.installationen() if i["key"] != schluessel]
         ergebnis.update(abhaengigkeiten_pruefen(pfad, funde, self.index(schluessel),
@@ -2459,6 +2646,12 @@ class ManagerApp:
             zeilen.append(tr(_("Keine Importe gefunden.")))
         else:
             zeilen.append(tr(_("Alle Abhängigkeiten sind vorhanden.")))
+        if analyse["eingabe"] == "zeile":
+            zeilen.append(tr(_("Fragt nach Eingaben – die Zeile „Eingabe an“ unter der Ausgabe "
+                               "nimmt sie entgegen.")))
+        elif analyse["eingabe"] == "konsole":
+            zeilen.append(tr(_("Fragt Passwörter oder einzelne Tasten ab und startet deshalb "
+                               "in einem eigenen Konsolenfenster.")))
         zeilen.append(tr(_("Doppelklick auf den Namen startet das Script.")))
         return "\n".join(zeilen)
 
@@ -2501,12 +2694,18 @@ class ManagerApp:
             melden(self, _("Script starten"), _("Es wurde keine Python-Installation gefunden."),
                    art="fehler")
             return
+        analyse = self.script_analysieren(pfad)
+        konsole = analyse["eingabe"] == "konsole"
         try:
-            prozess = subprocess.Popen(
-                [exe, "-u", pfad], cwd=os.path.dirname(pfad) or None, env=utf8_umgebung(),
-                stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                text=True, encoding="utf-8", errors="replace", bufsize=1,
-                creationflags=OHNE_FENSTER)
+            if konsole:
+                prozess = subprocess.Popen(
+                    [exe, "-c", KONSOLEN_START, pfad, tr(_("Enter schließt dieses Fenster."))],
+                    cwd=os.path.dirname(pfad) or None, creationflags=NEUE_KONSOLE)
+            else:
+                prozess = subprocess.Popen(
+                    [exe, "-u", pfad], cwd=os.path.dirname(pfad) or None, env=utf8_umgebung(),
+                    stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                    creationflags=OHNE_FENSTER)
         except OSError as fehler:
             text_schreiben(self.ausgabe, f"\n[{jetzt}] {name}: {fehler}\n", "fehler")
             self.fehlerprotokoll.append(f"[{jetzt}] {name}\n{fehler}")
@@ -2516,17 +2715,29 @@ class ManagerApp:
         self.lauf_nummer += 1
         lauf = {"nummer": self.lauf_nummer, "name": name, "pfad": pfad, "prozess": prozess,
                 "fehler": [], "start": time.monotonic(), "uhrzeit": jetzt,
-                "python": installation_titel(inst) if inst else exe}
+                "python": installation_titel(inst) if inst else exe,
+                "konsole": konsole,                      # Ausgabe im eigenen Konsolenfenster
+                "stdin": not konsole,                    # nimmt Eingaben aus der App an
+                "fragt": analyse["eingabe"] == "zeile",  # input() / sys.stdin im Quelltext
+                "anfang": {"aus": True, "fehler": True}}  # steht die Ausgabe am Zeilenanfang?
         self.laeufe[lauf["nummer"]] = lauf
         text_schreiben(self.ausgabe, "\n" + "═" * 72 + "\n", "info")
         text_schreiben(self.ausgabe, f"[{jetzt}] " + tr(_("Start: {name}").format(name=name))
                        + f"   ({lauf['python']})\n", "info")
         text_schreiben(self.ausgabe, f"{pfad}\n", "leise")
+        if konsole:
+            text_schreiben(self.ausgabe, tr(_("Läuft in einem eigenen Konsolenfenster, weil das "
+                                              "Script Passwörter oder einzelne Tasten abfragt."))
+                           + "\n", "leise")
         text_schreiben(self.ausgabe, "═" * 72 + "\n", "info")
         self._laufanzeige_auffrischen()
+        self._eingabe_auffrischen(neu=lauf["nummer"] if analyse["eingabe"] == "zeile" else None)
+        if analyse["eingabe"] == "zeile":
+            self.eingabe_feld.focus_set()
 
-        leser = [threading.Thread(target=self._strom_lesen, args=(lauf, strom, art), daemon=True)
-                 for strom, art in ((prozess.stdout, "aus"), (prozess.stderr, "fehler"))]
+        leser = [] if konsole else [
+            threading.Thread(target=self._strom_lesen, args=(lauf, strom, art), daemon=True)
+            for strom, art in ((prozess.stdout, "aus"), (prozess.stderr, "fehler"))]
         for faden in leser:
             faden.start()
 
@@ -2538,33 +2749,51 @@ class ManagerApp:
         threading.Thread(target=warten, daemon=True).start()
 
     def _strom_lesen(self, lauf, strom, art):
-        """Ausgabe zeilenweise lesen - stdout und stderr in eigenen Threads.
+        """Ausgabe stueckweise lesen - stdout und stderr in eigenen Threads.
 
         Wuerde man erst stdout und danach stderr lesen, bliebe das Script
         haengen, sobald es mehr Fehlerausgabe erzeugt, als der Puffer fasst.
+        read1() liefert, was gerade da ist, und wartet nicht auf ein
+        Zeilenende - so erscheint auch eine Frage ohne Umbruch sofort.
         """
+        dekoder = StromDekoder()
         try:
-            for zeile in iter(strom.readline, ""):
-                self.im_hauptthread(self._ausgabe_zeile, lauf, zeile, art)
+            while True:
+                daten = strom.read1(4096)
+                if not daten:
+                    break
+                text = dekoder.stueck(daten)
+                if text:
+                    self.im_hauptthread(self._ausgabe_stueck, lauf, text, art)
         except (OSError, ValueError):
             pass
         finally:
+            rest = dekoder.ende()
+            if rest:
+                self.im_hauptthread(self._ausgabe_stueck, lauf, rest, art)
             try:
                 strom.close()
             except OSError:
                 pass
 
-    def _ausgabe_zeile(self, lauf, zeile, art):
+    def _ausgabe_stueck(self, lauf, text, art):
         praefix = f"[{lauf['name']}] " if len(self.laeufe) > 1 else ""
+        angezeigt, lauf["anfang"][art] = praefix_einfuegen(text, praefix, lauf["anfang"][art])
         if art == "fehler":
-            lauf["fehler"].append(zeile)
-            text_schreiben(self.ausgabe, praefix + zeile, "fehler")
+            lauf["fehler"].append(text)
+            text_schreiben(self.ausgabe, angezeigt, "fehler")
             self._fehlerknopf_auffrischen()
         else:
-            text_schreiben(self.ausgabe, praefix + zeile)
+            text_schreiben(self.ausgabe, angezeigt)
+
+    @staticmethod
+    def _fehlerzeilen(lauf):
+        """Fehlerausgabe eines Laufs als Zeilen - sie kommt in Stuecken an."""
+        return "".join(lauf["fehler"]).rstrip("\n").split("\n") if lauf["fehler"] else []
 
     def _lauf_beendet(self, lauf):
         self.laeufe.pop(lauf["nummer"], None)
+        self._eingabe_trennen(lauf)
         code = lauf["prozess"].returncode
         dauer = time.monotonic() - lauf["start"]
         jetzt = datetime.now().strftime("%H:%M:%S")
@@ -2575,11 +2804,122 @@ class ManagerApp:
         text_schreiben(self.ausgabe, f"\n[{jetzt}] {text}\n", "fehler" if code else "ok")
         if lauf["fehler"] or (code and not lauf.get("gestoppt")):
             block = [f"[{lauf['uhrzeit']}] {lauf['name']}", lauf["pfad"], lauf["python"], ""]
-            block += [z.rstrip("\n") for z in lauf["fehler"]]
+            block += self._fehlerzeilen(lauf)
+            if lauf.get("konsole"):
+                # Die Fehlermeldung stand im Konsolenfenster, die App hat sie nie gesehen
+                block.append(tr(_("Die Ausgabe stand im eigenen Konsolenfenster.")))
             block.append(f"Exit-Code {code}")
             self.fehlerprotokoll.append("\n".join(block))
         self._fehlerknopf_auffrischen()
         self._laufanzeige_auffrischen()
+        self._eingabe_auffrischen()
+
+    # -- Eingabe an laufende Scripts -------------------------------------------
+
+    def _eingabezeile_bauen(self, eltern):
+        tk, ttk = _tk, _ttk
+        zeile = faerben(tk.Frame(eltern), bg="CARD")
+        zeile.pack(side="bottom", fill="x", padx=14, pady=(0, 14))
+        beschriften(faerben(tk.Label(zeile, font=FONT_SMALL, anchor="w"),
+                            bg="CARD", fg="MUTED"), _("Eingabe an")).pack(side="left")
+        self.eingabe_ziel = ttk.Combobox(zeile, state="disabled", font=FONT_SMALL, width=18)
+        self.eingabe_ziel.pack(side="left", padx=(10, 8))
+        Tooltip(self.eingabe_ziel, lambda: tr(_("Laufendes Script, das die Eingabe bekommt.")))
+        self.knopf_eingabe_ende = FlatButton(
+            zeile, _("Ende"), self.eingabe_schliessen, state="disabled",
+            tooltip=_("Schließt die Eingabe des Scripts – wie Strg+Z in der Konsole. Für "
+                      "Scripts, die bis zum Ende der Eingabe lesen."))
+        self.knopf_eingabe_ende.pack(side="right")
+        self.knopf_senden = FlatButton(zeile, _("Senden"), self.eingabe_senden, state="disabled",
+                                       tooltip=_("Schickt die Zeile an das Script (Enter)."))
+        self.knopf_senden.pack(side="right", padx=(0, 8))
+        self.var_script_eingabe = tk.StringVar()
+        self.eingabe_feld = ttk.Entry(zeile, textvariable=self.var_script_eingabe,
+                                      font=FONT_MONO_SMALL, state="disabled")
+        self.eingabe_feld.pack(side="left", fill="x", expand=True, padx=(0, 8))
+        self.eingabe_feld.bind("<Return>", lambda _e: self.eingabe_senden())
+
+    def _eingabe_auffrischen(self, neu=None):
+        """Auswahl der Scripts, die Eingaben annehmen, und Zustand der Eingabezeile.
+
+        neu waehlt diesen Lauf aus; sonst bleibt die bisherige Wahl, solange
+        ihr Script noch laeuft, und faellt sonst auf das zuletzt gestartete.
+        """
+        bisher = self._eingabe_ziele.get(self.eingabe_ziel.get())
+        laeufe = [lauf for lauf in self.laeufe.values() if lauf.get("stdin")]
+        namen = [lauf["name"] for lauf in laeufe]
+        self._eingabe_ziele = {
+            (lauf["name"] if namen.count(lauf["name"]) == 1
+             else f"{lauf['name']} #{lauf['nummer']}"): lauf["nummer"] for lauf in laeufe}
+        nach_nummer = {nummer: titel for titel, nummer in self._eingabe_ziele.items()}
+        aktiv = bool(laeufe)
+        self.eingabe_ziel.configure(values=list(self._eingabe_ziele),
+                                    state="readonly" if aktiv else "disabled")
+        # Rueckfall: bevorzugt ein Script, das erkennbar nach Eingaben fragt
+        fragende = [lauf for lauf in laeufe if lauf.get("fragt")] or laeufe
+        ziel = neu if neu in nach_nummer else bisher if bisher in nach_nummer else (
+            fragende[-1]["nummer"] if fragende else None)
+        self.eingabe_ziel.set(nach_nummer.get(ziel, ""))
+        if not aktiv and self._fokus() is self.eingabe_feld:
+            self.master.focus_set()          # Fokus nicht auf einem gesperrten Feld lassen
+        self.eingabe_feld.configure(state="normal" if aktiv else "disabled")
+        for knopf in (self.knopf_senden, self.knopf_eingabe_ende):
+            knopf.configure(state="normal" if aktiv else "disabled")
+        self.knopf_senden.art_setzen("primary" if aktiv else "secondary")
+
+    def _fokus(self):
+        """Widget, das im Hauptfenster den Fokus hat oder bei Rueckkehr bekommt."""
+        try:
+            return self.master.focus_lastfor()
+        except KeyError:                     # Fokus in einem Tk-internen Popup (Combobox-Liste)
+            return None
+
+    def _eingabe_lauf(self):
+        lauf = self.laeufe.get(self._eingabe_ziele.get(self.eingabe_ziel.get()))
+        return lauf if lauf and lauf.get("stdin") else None
+
+    def eingabe_senden(self):
+        lauf = self._eingabe_lauf()
+        if not lauf:
+            return
+        text = self.var_script_eingabe.get()
+        try:
+            strom = lauf["prozess"].stdin
+            strom.write((text + "\n").encode("utf-8"))
+            strom.flush()
+        except (OSError, ValueError):
+            self._eingabe_trennen(lauf)
+            self._eingabe_auffrischen()
+            self.meldung(_("„{name}“ nimmt keine Eingaben mehr an.").format(name=lauf["name"]),
+                         fehler=True)
+            return
+        self.var_script_eingabe.set("")
+        # Wie in einer Konsole steht die Eingabe hinter der Frage des Scripts.
+        praefix = f"[{lauf['name']}] " if len(self.laeufe) > 1 else ""
+        angezeigt, _anfang = praefix_einfuegen(text + "\n", praefix, lauf["anfang"]["aus"])
+        lauf["anfang"]["aus"] = True
+        text_schreiben(self.ausgabe, angezeigt, "eingabe")
+
+    def eingabe_schliessen(self):
+        lauf = self._eingabe_lauf()
+        if not lauf:
+            return
+        self._eingabe_trennen(lauf)
+        self._eingabe_auffrischen()
+        text_schreiben(self.ausgabe, "\n" + tr(_("[Eingabe an {name} geschlossen]").format(
+            name=lauf["name"])) + "\n", "leise")
+        lauf["anfang"]["aus"] = True
+
+    @staticmethod
+    def _eingabe_trennen(lauf):
+        """Die Eingabe-Pipe eines Laufs schliessen; das Script liest danach Dateiende."""
+        lauf["stdin"] = False
+        strom = lauf["prozess"].stdin
+        if strom:
+            try:
+                strom.close()
+            except (OSError, ValueError):            # Script war schon weg
+                pass
 
     def _laufanzeige_auffrischen(self):
         anzahl = len(self.laeufe)
@@ -2601,8 +2941,7 @@ class ManagerApp:
         for lauf in self.laeufe.values():             # auch noch laufende Scripts
             if lauf["fehler"]:
                 bloecke.append("\n".join([f"[{lauf['uhrzeit']}] {lauf['name']}", lauf["pfad"],
-                                          lauf["python"], ""]
-                                         + [z.rstrip("\n") for z in lauf["fehler"]]))
+                                          lauf["python"], ""] + self._fehlerzeilen(lauf)))
         if not bloecke:
             return
         self.zwischenablage(("\n\n" + "-" * 60 + "\n\n").join(bloecke))
@@ -2747,6 +3086,7 @@ class ManagerApp:
             self.alles_einlesen()
         else:
             self._stand_anzeigen()
+            self.veraltete_nachlesen()
 
     def alles_einlesen(self):
         """Installationen suchen und die Module jeder Installation einlesen."""
@@ -2779,20 +3119,48 @@ class ManagerApp:
 
     def installation_einlesen(self, schluessel):
         """Module einer einzelnen Installation neu einlesen."""
-        inst = self.installation(schluessel)
-        if not inst or self.einlesen_laeuft or self.pip_laeuft:
+        self.installationen_einlesen([schluessel])
+
+    def installationen_einlesen(self, schluessel_liste):
+        """Module der genannten Installationen nacheinander neu einlesen."""
+        insts = [i for i in map(self.installation, schluessel_liste) if i]
+        if not insts or self.einlesen_laeuft or self.pip_laeuft:
             return
         self._beschaeftigt(True, einlesen=True)
-        self.status(_("Lese Module ein: {python} …").format(python=installation_titel(inst)),
-                    verlauf=True)
 
         def arbeit():
             try:
-                self.im_hauptthread(self._daten_uebernehmen, schluessel,
-                                    module_einlesen(inst["exe"]))
+                for inst in insts:
+                    self.im_hauptthread(self.status, _("Lese Module ein: {python} …").format(
+                        python=installation_titel(inst)), True)
+                    self.im_hauptthread(self._daten_uebernehmen, inst["key"],
+                                        module_einlesen(inst["exe"]))
             finally:
                 self.im_hauptthread(self._einlesen_fertig)
         threading.Thread(target=arbeit, daemon=True).start()
+
+    def veraltete_nachlesen(self):
+        """Installationen neu einlesen, in deren Paketordnern sich etwas geaendert hat.
+
+        Faengt Installationen mit pip ausserhalb der App auf - etwa in einer
+        Konsole. Der Vergleich kostet nur ein paar Dateiabfragen; eingelesen
+        wird nur, was sich wirklich geaendert hat, auch bei „manuell“.
+        """
+        self._modulstand_geprueft = time.monotonic()
+        if self.einlesen_laeuft or self.pip_laeuft:
+            return
+        veraltet = [inst["key"] for inst in self.installationen()
+                    if module_veraltet(self.cfg["modul_daten"].get(inst["key"]))]
+        if veraltet:
+            self.installationen_einlesen(veraltet)
+
+    def _fenster_aktiviert(self, ereignis):
+        # <Activate> kommt bei jedem Widget des Fensters an; einmal reicht, und
+        # schnelles Hin- und Herwechseln loest nicht jedes Mal eine Pruefung aus.
+        if ereignis.widget is not self.master:
+            return
+        if time.monotonic() - self._modulstand_geprueft >= 5:
+            self.veraltete_nachlesen()
 
     def _installationen_uebernehmen(self, gefunden):
         vorher = [i["key"] for i in self.installationen()]
@@ -2811,6 +3179,9 @@ class ManagerApp:
         if "fehler" in daten:
             alt = self.cfg["modul_daten"].get(schluessel, {})
             alt["fehler"] = daten["fehler"]
+            # Den Stand trotzdem merken: Sonst gaelte die Installation weiter
+            # als veraltet, und jede Rueckkehr ins Fenster versuchte es erneut.
+            alt["stempel"] = orte_stempel(alt.get("stempel", ()))
             self.cfg["modul_daten"][schluessel] = alt
         else:
             self.cfg["modul_daten"][schluessel] = daten
@@ -3802,6 +4173,32 @@ TRANSLATIONS = {
         "Alle Abhängigkeiten sind vorhanden.": "All dependencies are present.",
         "Doppelklick auf den Namen startet das Script.":
             "Double-click the name to run the script.",
+        "Fragt nach Eingaben – die Zeile „Eingabe an“ unter der Ausgabe nimmt sie entgegen.":
+            "Asks for input – the “Input to” line below the output takes it.",
+        "Fragt Passwörter oder einzelne Tasten ab und startet deshalb in einem eigenen "
+        "Konsolenfenster.":
+            "Asks for passwords or single keys and therefore runs in a console window of its "
+            "own.",
+
+        # Eingabe an laufende Scripts
+        "Eingabe an": "Input to",
+        "Laufendes Script, das die Eingabe bekommt.": "Running script that receives the input.",
+        "Ende": "End",
+        "Schließt die Eingabe des Scripts – wie Strg+Z in der Konsole. Für Scripts, die bis "
+        "zum Ende der Eingabe lesen.":
+            "Closes the script's input – like Ctrl+Z in a console. For scripts that read until "
+            "the end of input.",
+        "Senden": "Send",
+        "Schickt die Zeile an das Script (Enter).": "Sends the line to the script (Enter).",
+        "„{name}“ nimmt keine Eingaben mehr an.": "“{name}” no longer accepts input.",
+        "[Eingabe an {name} geschlossen]": "[Input to {name} closed]",
+        "Enter schließt dieses Fenster.": "Press Enter to close this window.",
+        "Die Ausgabe stand im eigenen Konsolenfenster.":
+            "The output was shown in the script's own console window.",
+        "Läuft in einem eigenen Konsolenfenster, weil das Script Passwörter oder einzelne "
+        "Tasten abfragt.":
+            "Runs in a console window of its own because the script asks for passwords or "
+            "single keys.",
         "Abhängigkeiten: {name}": "Dependencies: {name}",
         "Fehlende installieren …": "Install missing …",
 

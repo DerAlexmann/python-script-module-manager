@@ -10,7 +10,7 @@ Englisch, hell und dunkel.
 
 *[English version: README.en.md](README.en.md)*
 
-![Der Reiter „Scripts" mit Script-Liste und Ausgabe](docs/screenshots/scripts-hell.png)
+![Der Reiter „Scripts" mit Script-Liste, Ausgabe und der Eingabezeile, die auf eine Antwort des Scripts „Ordner aufräumen" wartet](docs/screenshots/scripts-hell.png)
 
 ## Was er kann
 
@@ -27,6 +27,13 @@ Englisch, hell und dunkel.
 - **Script-Ausgabe** live, Fehlerausgabe in Rot. Mehrere Scripts dürfen
   gleichzeitig laufen. Jedes Script läuft in seinem eigenen Ordner, so dass
   relative Pfade stimmen.
+- **Eingaben:** Fragt ein Script mit `input()` nach etwas, nimmt die Zeile
+  **Eingabe an** unter der Ausgabe die Antwort entgegen; Enter schickt sie ab.
+  Laufen mehrere Scripts, wählst du daneben, welches sie bekommt. **Ende**
+  schließt die Eingabe für Scripts, die bis zum Ende der Eingabe lesen. Scripts,
+  die Passwörter (`getpass`) oder einzelne Tasten (`msvcrt`, `curses`)
+  abfragen, starten in einem eigenen Konsolenfenster, das nach dem Ende offen
+  bleibt, bis du Enter drückst.
 - **Fehlermeldungen kopieren:** Sobald ein Script etwas auf die Fehlerausgabe
   schreibt oder mit einem Fehlercode endet, wird der Schalter rot. Er legt
   Script, Pfad, Python-Fassung, Traceback und Exit-Code in die Zwischenablage.
@@ -76,7 +83,10 @@ auszuführen. Dabei gilt:
 - **Liste aktualisieren** nimmt neu installierte Module auf und markiert
   entfernte. Wann das geschieht, ist einstellbar: *automatisch* (bei jedem
   Start und nach dem Schließen der Konsole) oder *durch Benutzer* (nur beim
-  ersten Start und auf Knopfdruck).
+  ersten Start und auf Knopfdruck). In beiden Fällen bemerkt das Programm, wenn
+  außerhalb – etwa mit `pip` in einer Konsole – etwas installiert oder entfernt
+  wurde: beim Start, bei der Rückkehr ins Fenster und bei „Abhängigkeiten
+  prüfen“. Neu eingelesen wird dann nur die betroffene Installation.
 - **Konsole öffnen:** eine Eingabeaufforderung, in der `python` und `pip` zur
   gewählten Installation gehören.
 - **Ordner öffnen:** der Ordner der Installation im Explorer, `python.exe`
